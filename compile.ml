@@ -44,9 +44,6 @@ let check_scope (e : (Lexing.position * Lexing.position) expr) : unit =
            env binds in
        help body env2
   in help e []
-  
-
-  
 
 type tag = int
 let tag (e : 'a expr) : tag expr =
@@ -93,9 +90,8 @@ let rec untag (e : 'a expr) : unit expr =
   | EIf(cond, thn, els, _) ->
      EIf(untag cond, untag thn, untag els, ())
 
-
 let anf (e : tag expr) : unit expr =
-  let rec helpC (e : tag expr) : (unit expr * (string * unit expr) list) = 
+  let rec helpC (e : tag expr) : (unit expr * (string * unit expr) list) =
     match e with
     | EPrim1(op, arg, _) ->
        let (arg_imm, arg_setup) = helpI arg in
@@ -138,14 +134,14 @@ let anf (e : tag expr) : unit expr =
        let (body_ans, body_setup) = helpI (ELet(rest, body, pos)) in
        (body_ans, exp_setup @ [(bind, exp_ans)] @ body_setup)
     | EId(name, _) -> (EId(name, ()), [])
-  and anf e = 
+  and anf e =
     let (ans, ans_setup) = helpI e in
     List.fold_right (fun (bind, exp) body -> ELet([bind, exp, ()], body, ())) ans_setup ans
   in
   anf e
 ;;
 
-  
+
 let r_to_asm (r : reg) : string =
   match r with
   | EAX -> "eax"
@@ -251,31 +247,102 @@ let rec replicate (x : 'a) (i : int) : 'a list =
   else x :: (replicate x (i - 1))
 
 let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : instruction list =
-  match e with
-  | ELet([id, e, _], body, _) ->
-     let prelude = compile_expr e (si + 1) env in
-     let body = compile_expr body (si + 1) ((id, si)::env) in
-     prelude
-     @ [ IMov(RegOffset(~-si, EBP), Reg(EAX)) ]
-     @ body
-  | EPrim1 _ -> failwith "Fill in here"
-  | EPrim2 _ -> failwith "Fill in here"
-  | EIf _ -> failwith "Fill in here"
-  | ENumber(n, _) -> [ IMov(Reg(EAX), compile_imm e env) ]
-  | EBool(n, _) -> [ IMov(Reg(EAX), compile_imm e env) ]
-  | EId(x, _) -> [ IMov(Reg(EAX), compile_imm e env) ]
-  | _ -> failwith "Impossible: Not in ANF"
+    match e with
+    | ELet([id, e, _], body, _) ->
+        let prelude = compile_expr e (si + 1) env in
+        let body = compile_expr body (si + 1) ((id, si)::env) in
+        prelude @ [ IMov(RegOffset(~-si, EBP), Reg(EAX)) ] @ body
+    | EPrim1 (op, e, t) ->
+        let eReg = compile_imm e env in
+        (match op with
+        | Add1 ->
+            compile_expr (EPrim1(IsNum, e, t)) si env @ [
+            IMov(Reg(EAX), eReg);
+            IAdd(Reg(EAX), Const(1)) ]
+            (* jump if overflow here *)
+        | Sub1 ->
+            compile_expr (EPrim1(IsNum, e, t)) si env @ [
+            IMov(Reg(EAX), eReg);
+            IAdd(Reg(EAX), Const(1)) ]
+            (* jump if overflow here *)
+        | Print -> [
+            (* Call print function here *)
+        ]
+        | IsBool -> [
+            ITest(eReg, HexConst(0x1));
+            (* Call error function here *)
+            IJz("error"); ]
+        | IsNum -> [
+            ITest(eReg, HexConst(0x1));
+            (* Call error function here *)
+            IJnz("error"); ]
+        | Not ->
+            compile_expr (EPrim1(IsBool, e, t)) si env @ [
+            (* Somehow invert true to false and vice versa here *)
+            ]
+        | PrintStack -> [
+            (* Pop stack while esp!=ebp and print each? *)
+        ]
+        )
+    | EPrim2 (op, e1, e2, t) ->
+        let ptype = match op with
+            | Plus | Minus | Times | Greater | GreaterEq | Less | LessEq | Eq -> IsNum
+            | And | Or -> IsBool in
+        let eReg1 = compile_imm e1 env in
+        let eReg2 = compile_imm e2 env in
+        let prelude =
+            compile_expr (EPrim1(ptype, e1, t)) si env @
+            compile_expr (EPrim1(ptype, e2, t)) si env
+        in let main = (match op with
+        | Plus -> [
+            IMov(Reg(EAX), eReg1);
+            IAdd(Reg(EAX), eReg2);
+            (* jump if overflow here *)
+        ]
+        | Minus -> [
+            IMov(Reg(EAX), eReg1);
+            ISub(Reg(EAX), eReg2);
+            (* jump if overflow here *)
+        ]
+        | Times -> [
+            IMov(Reg(EAX), eReg1);
+            IMul(Reg(EAX), eReg2);
+            (* jump if overflow here *)
+        ]
+        | And -> [
+            IMov(Reg(EAX), eReg1);
+            IAnd(Reg(EAX), eReg2);
+        ]
+        | Or -> [
+            IMov(Reg(EAX), eReg1);
+            IOr(Reg(EAX), eReg2);
+        ]
+        | Greater -> []
+        | GreaterEq -> []
+        | Less -> []
+        | LessEq -> []
+        | Eq -> []
+        )
+        in prelude @ main
+    | EIf _ -> failwith "Fill in here"
+    | ENumber(n, _) -> [ IMov(Reg(EAX), compile_imm e env) ]
+    | EBool(n, _) -> [ IMov(Reg(EAX), compile_imm e env) ]
+    | EId(x, _) -> [ IMov(Reg(EAX), compile_imm e env) ]
+    | _ -> failwith "Impossible: Not in ANF"
 and compile_imm (e : tag expr) (env : (string * int) list) : arg =
-  match e with
-  | ENumber(n, _) ->
-     if n > 1073741823 || n < -1073741824 then
-       failwith ("Compile-time integer overflow: " ^ (string_of_int n))
-     else
-       failwith "Fill in here"
-  | EBool(true, _) -> failwith "Fill in here"
-  | EBool(false, _) -> failwith "Fill in here"
-  | EId(x, _) -> RegOffset(~-(find env x), EBP)
-  | _ -> failwith "Impossible: not an immediate"
+    match e with
+    | ENumber(n, _) ->
+        if n > 1073741823 || n < -1073741824 then
+           failwith ("Compile-time integer overflow: " ^ (string_of_int n))
+        else
+           Const(n lsl 1)
+    | EBool(true, _) ->
+        Const(0xFFFFFFFFF)
+    | EBool(false, _) ->
+        Const(0x7FFFFFFFF)
+    | EId(x, _) ->
+        RegOffset(~-(find env x), EBP)
+    | _ -> failwith "Impossible: not an immediate"
 ;;
 
 let compile_anf_to_string (anfed : tag expr) : string =
