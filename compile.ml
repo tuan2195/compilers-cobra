@@ -258,12 +258,12 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         | Add1 ->
             compile_expr (EPrim1(IsNum, e, t)) si env @ [
             IMov(Reg(EAX), eReg);
-            IAdd(Reg(EAX), Const(1)) ]
+            IAdd(Reg(EAX), Const(1 lsl 1)) ]
             (* jump if overflow here *)
         | Sub1 ->
             compile_expr (EPrim1(IsNum, e, t)) si env @ [
             IMov(Reg(EAX), eReg);
-            IAdd(Reg(EAX), Const(1)) ]
+            IAdd(Reg(EAX), Const(1 lsl 1)) ]
             (* jump if overflow here *)
         | Print -> [
             (* Call print function here *)
@@ -278,6 +278,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             IJnz("error"); ]
         | Not ->
             compile_expr (EPrim1(IsBool, e, t)) si env @ [
+            IXor(Reg(EAX), HexConst(0x80000000));
             (* Somehow invert true to false and vice versa here *)
             ]
         | PrintStack -> [
@@ -285,6 +286,10 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         ]
         )
     | EPrim2 (op, e1, e2, t) ->
+        let trueLabel = sprintf "true_%d" t in
+        let doneLabel = sprintf "done_%d" t in
+        let constTrue = HexConst(0xFFFFFFFFF) in
+        let constFalse = HexConst(0x7FFFFFFFF) in
         let ptype = match op with
             | Plus | Minus | Times | Greater | GreaterEq | Less | LessEq | Eq -> IsNum
             | And | Or -> IsBool in
@@ -307,6 +312,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         | Times -> [
             IMov(Reg(EAX), eReg1);
             IMul(Reg(EAX), eReg2);
+            ISar(Reg(EAX), Const(1));
             (* jump if overflow here *)
         ]
         | And -> [
@@ -317,11 +323,56 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             IMov(Reg(EAX), eReg1);
             IOr(Reg(EAX), eReg2);
         ]
-        | Greater -> []
-        | GreaterEq -> []
-        | Less -> []
-        | LessEq -> []
-        | Eq -> []
+        | Greater -> [
+            IMov(Reg(EAX), eReg1);
+            ICmp(Reg(EAX), eReg2);
+            IJg(trueLabel);
+            IMov(Reg(EAX), constFalse);
+            IJmp(doneLabel);
+            ILabel(trueLabel);
+            IMov(Reg(EAX), constTrue);
+            ILabel(doneLabel);
+        ]
+        | GreaterEq -> [
+            IMov(Reg(EAX), eReg1);
+            ICmp(Reg(EAX), eReg2);
+            IJge(trueLabel);
+            IMov(Reg(EAX), constFalse);
+            IJmp(doneLabel);
+            ILabel(trueLabel);
+            IMov(Reg(EAX), constTrue);
+            ILabel(doneLabel);
+        ]
+        | Less -> [
+            IMov(Reg(EAX), eReg1);
+            ICmp(Reg(EAX), eReg2);
+            IJl(trueLabel);
+            IMov(Reg(EAX), constFalse);
+            IJmp(doneLabel);
+            ILabel(trueLabel);
+            IMov(Reg(EAX), constTrue);
+            ILabel(doneLabel);
+        ]
+        | LessEq -> [
+            IMov(Reg(EAX), eReg1);
+            ICmp(Reg(EAX), eReg2);
+            IJle(trueLabel);
+            IMov(Reg(EAX), constFalse);
+            IJmp(doneLabel);
+            ILabel(trueLabel);
+            IMov(Reg(EAX), constTrue);
+            ILabel(doneLabel);
+        ]
+        | Eq -> [
+            IMov(Reg(EAX), eReg1);
+            ICmp(Reg(EAX), eReg2);
+            IJe(trueLabel);
+            IMov(Reg(EAX), constFalse);
+            IJmp(doneLabel);
+            ILabel(trueLabel);
+            IMov(Reg(EAX), constTrue);
+            ILabel(doneLabel);
+        ]
         )
         in prelude @ main
     | EIf _ -> failwith "Fill in here"
@@ -337,30 +388,31 @@ and compile_imm (e : tag expr) (env : (string * int) list) : arg =
         else
            Const(n lsl 1)
     | EBool(true, _) ->
-        Const(0xFFFFFFFFF)
+        HexConst(0xFFFFFFFF)
     | EBool(false, _) ->
-        Const(0x7FFFFFFFF)
+        HexConst(0x7FFFFFFF)
     | EId(x, _) ->
         RegOffset(~-(find env x), EBP)
     | _ -> failwith "Impossible: not an immediate"
 ;;
 
 let compile_anf_to_string (anfed : tag expr) : string =
-  let prelude =
+    let prelude =
     "section .text
 extern error
 extern print
 global our_code_starts_here" in
-  let stack_setup = [
-      (* FILL: insert instructions for setting up stack here *)
+    let stack_setup = [
+        (* FILL: insert instructions for setting up stack here *)
+
     ] in
-  let postlude = [
+    let postlude = [
       IRet
       (* FILL: insert instructions for cleaning up stack, and maybe
        some labels for jumping to errors, here *) ] in
-  let body = (compile_expr anfed 1 []) in
-  let as_assembly_string = (to_asm (stack_setup @ body @ postlude)) in
-  sprintf "%s%s\n" prelude as_assembly_string
+    let body = (compile_expr anfed 1 []) in
+    let as_assembly_string = (to_asm (stack_setup @ body @ postlude)) in
+    sprintf "%s%s\n" prelude as_assembly_string
 
 
 let compile_to_string (prog : 'a expr) =
