@@ -263,7 +263,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         | Sub1 ->
             compile_expr (EPrim1(IsNum, e, t)) si env @ [
             IMov(Reg(EAX), eReg);
-            IAdd(Reg(EAX), Const(1 lsl 1)) ]
+            ISub(Reg(EAX), Const(1 lsl 1)) ]
             (* jump if overflow here *)
         | Print -> [
             (* Call print function here *)
