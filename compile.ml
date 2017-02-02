@@ -247,135 +247,150 @@ let rec replicate (x : 'a) (i : int) : 'a list =
   else x :: (replicate x (i - 1))
 
 let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : instruction list =
+    let checkBool r = [ ITest(r, HexConst(0x1)); IJz("error"); ] in
+    let checkNum r = [ ITest(r, HexConst(0x1)); IJnz("error"); ] in
     match e with
     | ELet([id, e, _], body, _) ->
         let prelude = compile_expr e (si + 1) env in
         let body = compile_expr body (si + 1) ((id, si)::env) in
         prelude @ [ IMov(RegOffset(~-si, EBP), Reg(EAX)) ] @ body
     | EPrim1 (op, e, t) ->
-        let eReg = compile_imm e env in
+        let arg = compile_imm e env in
         (match op with
         | Add1 ->
-            compile_expr (EPrim1(IsNum, e, t)) si env @ [
-            IMov(Reg(EAX), eReg);
-            IAdd(Reg(EAX), Const(1 lsl 1)) ]
+            checkNum arg @ [
+            IMov(Reg(EAX), arg);
+            IAdd(Reg(EAX), Const(1 lsl 1));
             (* jump if overflow here *)
+        ]
         | Sub1 ->
-            compile_expr (EPrim1(IsNum, e, t)) si env @ [
-            IMov(Reg(EAX), eReg);
-            ISub(Reg(EAX), Const(1 lsl 1)) ]
+            checkNum arg @ [
+            IMov(Reg(EAX), arg);
+            ISub(Reg(EAX), Const(1 lsl 1));
             (* jump if overflow here *)
+        ]
         | Print -> [
             (* Call print function here *)
         ]
-        | IsBool -> [
-            ITest(eReg, HexConst(0x1));
-            (* Call error function here *)
-            IJz("error"); ]
-        | IsNum -> [
-            ITest(eReg, HexConst(0x1));
-            (* Call error function here *)
-            IJnz("error"); ]
+        | IsBool -> checkBool arg
+        | IsNum -> checkNum arg
         | Not ->
-            compile_expr (EPrim1(IsBool, e, t)) si env @ [
+            checkBool arg @ [
             IXor(Reg(EAX), HexConst(0x80000000));
-            (* Somehow invert true to false and vice versa here *)
-            ]
+        ]
         | PrintStack -> [
             (* Pop stack while esp!=ebp and print each? *)
         ]
         )
     | EPrim2 (op, e1, e2, t) ->
-        let trueLabel = sprintf "true_%d" t in
-        let doneLabel = sprintf "done_%d" t in
+        let labelTrue = sprintf "compare_true_%d" t in
+        let labelDone = sprintf "compare_done_%d" t in
         let constTrue = HexConst(0xFFFFFFFFF) in
         let constFalse = HexConst(0x7FFFFFFFF) in
-        let ptype = match op with
-            | Plus | Minus | Times | Greater | GreaterEq | Less | LessEq | Eq -> IsNum
-            | And | Or -> IsBool in
-        let eReg1 = compile_imm e1 env in
-        let eReg2 = compile_imm e2 env in
-        let prelude =
-            compile_expr (EPrim1(ptype, e1, t)) si env @
-            compile_expr (EPrim1(ptype, e2, t)) si env
-        in let main = (match op with
+        let arg1 = compile_imm e1 env in
+        let arg2 = compile_imm e2 env in
+        let prelude = match op with
+            | Plus | Minus | Times | Greater | GreaterEq | Less | LessEq | Eq ->
+                checkNum arg1 @ checkNum arg2
+            | And | Or ->
+                checkBool arg1 @ checkBool arg2
+        in prelude @ (match op with
         | Plus -> [
-            IMov(Reg(EAX), eReg1);
-            IAdd(Reg(EAX), eReg2);
+            IMov(Reg(EAX), arg1);
+            IAdd(Reg(EAX), arg2);
             (* jump if overflow here *)
         ]
         | Minus -> [
-            IMov(Reg(EAX), eReg1);
-            ISub(Reg(EAX), eReg2);
+            IMov(Reg(EAX), arg1);
+            ISub(Reg(EAX), arg2);
             (* jump if overflow here *)
         ]
         | Times -> [
-            IMov(Reg(EAX), eReg1);
-            IMul(Reg(EAX), eReg2);
+            IMov(Reg(EAX), arg1);
+            IMul(Reg(EAX), arg2);
             ISar(Reg(EAX), Const(1));
             (* jump if overflow here *)
         ]
         | And -> [
-            IMov(Reg(EAX), eReg1);
-            IAnd(Reg(EAX), eReg2);
+            IMov(Reg(EAX), arg1);
+            IAnd(Reg(EAX), arg2);
         ]
         | Or -> [
-            IMov(Reg(EAX), eReg1);
-            IOr(Reg(EAX), eReg2);
+            IMov(Reg(EAX), arg1);
+            IOr(Reg(EAX), arg2);
         ]
         | Greater -> [
-            IMov(Reg(EAX), eReg1);
-            ICmp(Reg(EAX), eReg2);
-            IJg(trueLabel);
+            IMov(Reg(EAX), arg1);
+            ICmp(Reg(EAX), arg2);
+            IJg(labelTrue);
             IMov(Reg(EAX), constFalse);
-            IJmp(doneLabel);
-            ILabel(trueLabel);
+            IJmp(labelDone);
+            ILabel(labelTrue);
             IMov(Reg(EAX), constTrue);
-            ILabel(doneLabel);
+            ILabel(labelDone);
         ]
         | GreaterEq -> [
-            IMov(Reg(EAX), eReg1);
-            ICmp(Reg(EAX), eReg2);
-            IJge(trueLabel);
+            IMov(Reg(EAX), arg1);
+            ICmp(Reg(EAX), arg2);
+            IJge(labelTrue);
             IMov(Reg(EAX), constFalse);
-            IJmp(doneLabel);
-            ILabel(trueLabel);
+            IJmp(labelDone);
+            ILabel(labelTrue);
             IMov(Reg(EAX), constTrue);
-            ILabel(doneLabel);
+            ILabel(labelDone);
         ]
         | Less -> [
-            IMov(Reg(EAX), eReg1);
-            ICmp(Reg(EAX), eReg2);
-            IJl(trueLabel);
+            IMov(Reg(EAX), arg1);
+            ICmp(Reg(EAX), arg2);
+            IJl(labelTrue);
             IMov(Reg(EAX), constFalse);
-            IJmp(doneLabel);
-            ILabel(trueLabel);
+            IJmp(labelDone);
+            ILabel(labelTrue);
             IMov(Reg(EAX), constTrue);
-            ILabel(doneLabel);
+            ILabel(labelDone);
         ]
         | LessEq -> [
-            IMov(Reg(EAX), eReg1);
-            ICmp(Reg(EAX), eReg2);
-            IJle(trueLabel);
+            IMov(Reg(EAX), arg1);
+            ICmp(Reg(EAX), arg2);
+            IJle(labelTrue);
             IMov(Reg(EAX), constFalse);
-            IJmp(doneLabel);
-            ILabel(trueLabel);
+            IJmp(labelDone);
+            ILabel(labelTrue);
             IMov(Reg(EAX), constTrue);
-            ILabel(doneLabel);
+            ILabel(labelDone);
         ]
         | Eq -> [
-            IMov(Reg(EAX), eReg1);
-            ICmp(Reg(EAX), eReg2);
-            IJe(trueLabel);
+            IMov(Reg(EAX), arg1);
+            ICmp(Reg(EAX), arg2);
+            IJe(labelTrue);
             IMov(Reg(EAX), constFalse);
-            IJmp(doneLabel);
-            ILabel(trueLabel);
+            IJmp(labelDone);
+            ILabel(labelTrue);
             IMov(Reg(EAX), constTrue);
-            ILabel(doneLabel);
+            ILabel(labelDone);
         ]
         )
-        in prelude @ main
-    | EIf _ -> failwith "Fill in here"
+    | EIf (cnd, thn, els, t) ->
+        let labelFalse = sprintf "if_false_%d" t in
+        let labelTrue = sprintf "if_true_%d" t in
+        let labelDone = sprintf "if_done_%d" t in
+        let constTrue = HexConst(0xFFFFFFFFF) in
+        let constFalse = HexConst(0x7FFFFFFFF) in
+        let argCond = compile_imm cnd env in
+        checkBool argCond @ [
+            IMov(Reg(EAX), argCond);
+            ICmp(Reg(EAX), constTrue);
+            IJe(labelTrue);
+            ICmp(Reg(EAX), constFalse);
+            IJe(labelFalse);
+            IJmp("error");
+            ILabel(labelTrue);
+        ] @ compile_expr thn si env @ [
+            IJmp(labelDone);
+            ILabel(labelFalse);
+        ] @ compile_expr els si env @ [
+            ILabel(labelDone);
+        ]
     | ENumber(n, _) -> [ IMov(Reg(EAX), compile_imm e env) ]
     | EBool(n, _) -> [ IMov(Reg(EAX), compile_imm e env) ]
     | EId(x, _) -> [ IMov(Reg(EAX), compile_imm e env) ]
