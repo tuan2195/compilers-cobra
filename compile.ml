@@ -247,12 +247,14 @@ let rec replicate (x : 'a) (i : int) : 'a list =
   else x :: (replicate x (i - 1))
 
 let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : instruction list =
-    let checkBool r = [
-        ITest(r, Sized(DWORD_PTR, HexConst(0x1)));
+    let checkBool arg = [
+        IMov(Reg(EAX), arg);
+        ITest(Reg(EAX), Sized(DWORD_PTR, HexConst(0x1)));
         IJz("error_logic_not_bool");
     ] in
-    let checkNum r = [
-        ITest(r, Sized(DWORD_PTR, HexConst(0x1)));
+    let checkNum arg = [
+        IMov(Reg(EAX), arg);
+        ITest(Reg(EAX), Sized(DWORD_PTR, HexConst(0x1)));
         IJnz("error_arith_not_num");
     ] in
     match e with
@@ -265,20 +267,21 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         (match op with
         | Add1 ->
             checkNum arg @ [
-            IMov(Reg(EAX), arg);
+            (*IMov(Reg(EAX), arg);*)
             IAdd(Reg(EAX), Const(1 lsl 1));
             IJo("error_int_overflow");
         ]
         | Sub1 ->
             checkNum arg @ [
-            IMov(Reg(EAX), arg);
+            (*IMov(Reg(EAX), arg);*)
             ISub(Reg(EAX), Const(1 lsl 1));
             IJo("error_int_overflow");
         ]
         | Print -> [
+            IMov(Reg(EAX), arg);
             IPush(Reg(EAX));
             ICall("print");
-            IAdd(Reg(EAX), Const(word_size));
+            IPop(Reg(EAX));
             (* Call print function here *)
         ]
         | IsBool -> checkBool arg
@@ -295,41 +298,41 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         let labelTrue = sprintf "compare_true_%d" t in
         let labelDone = sprintf "compare_done_%d" t in
         let constTrue = Sized(DWORD_PTR, HexConst(0xFFFFFFFF)) in
-        let constFalse = Siezd(DWORD_PTR, HexConst(0x7FFFFFFF)) in
+        let constFalse = Sized(DWORD_PTR, HexConst(0x7FFFFFFF)) in
         let arg1 = compile_imm e1 env in
         let arg2 = compile_imm e2 env in
         let prelude = match op with
             | Plus | Minus | Times | Greater | GreaterEq | Less | LessEq | Eq ->
-                checkNum arg1 @ checkNum arg2
+                checkNum arg2 @ checkNum arg1
             | And | Or ->
-                checkBool arg1 @ checkBool arg2
+                checkBool arg2 @ checkBool arg1
         in prelude @ (match op with
         | Plus -> [
-            IMov(Reg(EAX), arg1);
+            (*IMov(Reg(EAX), arg1);*)
             IAdd(Reg(EAX), arg2);
             IJo("error_int_overflow");
         ]
         | Minus -> [
-            IMov(Reg(EAX), arg1);
+            (*IMov(Reg(EAX), arg1);*)
             ISub(Reg(EAX), arg2);
             IJo("error_int_overflow");
         ]
         | Times -> [
-            IMov(Reg(EAX), arg1);
+            (*IMov(Reg(EAX), arg1);*)
             IMul(Reg(EAX), arg2);
             ISar(Reg(EAX), Const(1));
             IJo("error_int_overflow");
         ]
         | And -> [
-            IMov(Reg(EAX), arg1);
+            (*IMov(Reg(EAX), arg1);*)
             IAnd(Reg(EAX), arg2);
         ]
         | Or -> [
-            IMov(Reg(EAX), arg1);
+            (*IMov(Reg(EAX), arg1);*)
             IOr(Reg(EAX), arg2);
         ]
         | Greater -> [
-            IMov(Reg(EAX), arg1);
+            (*IMov(Reg(EAX), arg1);*)
             ICmp(Reg(EAX), arg2);
             IJg(labelTrue);
             IMov(Reg(EAX), constFalse);
@@ -339,7 +342,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             ILabel(labelDone);
         ]
         | GreaterEq -> [
-            IMov(Reg(EAX), arg1);
+            (*IMov(Reg(EAX), arg1);*)
             ICmp(Reg(EAX), arg2);
             IJge(labelTrue);
             IMov(Reg(EAX), constFalse);
@@ -349,7 +352,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             ILabel(labelDone);
         ]
         | Less -> [
-            IMov(Reg(EAX), arg1);
+            (*IMov(Reg(EAX), arg1);*)
             ICmp(Reg(EAX), arg2);
             IJl(labelTrue);
             IMov(Reg(EAX), constFalse);
@@ -359,7 +362,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             ILabel(labelDone);
         ]
         | LessEq -> [
-            IMov(Reg(EAX), arg1);
+            (*IMov(Reg(EAX), arg1);*)
             ICmp(Reg(EAX), arg2);
             IJle(labelTrue);
             IMov(Reg(EAX), constFalse);
@@ -369,7 +372,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             ILabel(labelDone);
         ]
         | Eq -> [
-            IMov(Reg(EAX), arg1);
+            (*IMov(Reg(EAX), arg1);*)
             ICmp(Reg(EAX), arg2);
             IJe(labelTrue);
             IMov(Reg(EAX), constFalse);
@@ -384,15 +387,15 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         let labelTrue = sprintf "if_true_%d" t in
         let labelDone = sprintf "if_done_%d" t in
         let constTrue = Sized(DWORD_PTR, HexConst(0xFFFFFFFF)) in
-        let constFalse = Siezd(DWORD_PTR, HexConst(0x7FFFFFFF)) in
+        let constFalse = Sized(DWORD_PTR, HexConst(0x7FFFFFFF)) in
         let argCond = compile_imm cnd env in
         checkBool argCond @ [
-            IMov(Reg(EAX), argCond);
+            (*IMov(Reg(EAX), argCond);*)
             ICmp(Reg(EAX), constTrue);
             IJe(labelTrue);
             ICmp(Reg(EAX), constFalse);
             IJe(labelFalse);
-            IJmp("error");
+            IJmp("error_logic_not_bool");
             ILabel(labelTrue);
         ] @ compile_expr thn si env @ [
             IJmp(labelDone);
@@ -420,6 +423,15 @@ and compile_imm (e : tag expr) (env : (string * int) list) : arg =
     | _ -> failwith "Impossible: not an immediate"
 ;;
 
+let rec optimize (ls : instruction list) =
+    match ls with
+    | [] -> []
+    | (IMov(RegOffset(o1, r1), Reg(EAX)))::(IMov(Reg(EAX), RegOffset(o2, r2)))::rest ->
+        if o1 = o2 && r1 = r2 then optimize rest
+        else (List.nth ls 0)::(List.nth ls 1)::optimize rest
+    | what::rest ->
+        what::optimize rest
+
 let compile_anf_to_string (anfed : tag expr) : string =
     let prelude =
     "section .text
@@ -429,30 +441,40 @@ global our_code_starts_here
 our_code_starts_here:" in
     let stackSize = word_size * (count_vars anfed) in
     let stack_setup = [
-        ILineComment("Create stack frame: Save EBP and ESP");
+        ILineComment("Create stack frame: Save EBP and ESP, then allocate stack size");
         IPush(Reg(EBP));
         IMov(Reg(EBP), Reg(ESP));
-        ILineComment("Stack setup: count num vars and allocate stack space");
-        IAdd(Reg(ESP), Const(stackSize));
+        ISub(Reg(ESP), Const(stackSize));
         ILineComment("Program starts here");
     ] in
     let postlude = [
         (* Cleanup stack here *)
         ILineComment("Cleanup starts here");
-        ISub(Reg(ESP), Const(stackSize));
+        ILabel("cleanup_return");
+        IAdd(Reg(ESP), Const(stackSize));
         IPop(Reg(EBP));
         IRet;
+        (* Error handling labels *)
         ILineComment("Error handling labels");
         ILabel("error_arith_not_num");
         IPush(HexConst(0xA));
         ICall("error");
+        IJmp("cleanup_error");
         ILabel("error_logic_not_bool");
         IPush(HexConst(0xB));
+        ICall("error");
+        IJmp("cleanup_error");
         ILabel("error_int_overflow");
         IPush(HexConst(0xC));
         ICall("error");
+        IJmp("cleanup_error");
+        (* Cleanup error calls here *)
+        ILabel("cleanup_error");
+        IPop(Reg(EAX));
+        IMov(Reg(EAX), Const(0));
+        IJmp("cleanup_return");
     ] in
-    let body = (compile_expr anfed 1 []) in
+    let body = optimize (compile_expr anfed 1 []) in
     let as_assembly_string = (to_asm (stack_setup @ body @ postlude)) in
     sprintf "%s%s\n" prelude as_assembly_string
 

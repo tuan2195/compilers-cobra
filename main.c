@@ -26,12 +26,11 @@ int print(int val)
 void error(int err)
 {
     if (err == 0xA)
-        fprintf(stderr, "Error: Arithmetic operation expects a number");
+        printf("Error: Arithmetic operation expects a number\n");
     else if (err == 0xB)
-        fprintf(stderr, "Error: Logic operation expects a boolean");
+        printf("Error: Logic/if operation expects a boolean\n");
     else if (err == 0xC)
-        fprintf(stderr, "Error: Integer overflow detected");
-    exit(-1);
+        printf("Error: Integer overflow detected\n");
 }
 
 int main(int argc, char** argv)
