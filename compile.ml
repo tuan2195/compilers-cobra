@@ -443,10 +443,17 @@ global our_code_starts_here
 our_code_starts_here:" in
     let stackSize = word_size * (count_vars anfed) in
     let stack_setup = [
-        ILineComment("Create stack frame: Save EBP and ESP, then allocate stack size");
+        (* Stack setup: Save EBP and ESP *)
+        ILineComment("Stack setup: Save EBP and ESP");
         IPush(Reg(EBP));
         IMov(Reg(EBP), Reg(ESP));
-        ISub(Reg(ESP), Const(stackSize));
+        (* Stack setup: Push zeroes on stack *)
+        IMov(Reg(EAX), Reg(ESP));
+        ISub(Reg(EAX), Const(stackSize));
+        ILabel("stack_setup_push_loop");
+        IPush(Sized(DWORD_PTR, Const(0)));
+        ICmp(Reg(EAX), Reg(ESP));
+        IJne("stack_setup_push_loop");
         ILineComment("Program starts here");
     ] in
     let postlude = [
