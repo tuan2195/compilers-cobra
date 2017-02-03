@@ -427,8 +427,10 @@ let rec optimize (ls : instruction list) =
     match ls with
     | [] -> []
     | (IMov(RegOffset(o1, r1), Reg(EAX)))::(IMov(Reg(EAX), RegOffset(o2, r2)))::rest ->
-        if o1 = o2 && r1 = r2 then optimize rest
-        else (List.nth ls 0)::(List.nth ls 1)::optimize rest
+        if o1 = o2 && r1 = r2 then
+            (List.hd ls)::optimize rest
+        else
+            (List.nth ls 0)::(List.nth ls 1)::optimize rest
     | what::rest ->
         what::optimize rest
 
