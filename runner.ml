@@ -20,7 +20,7 @@ let string_of_position p =
   sprintf "%s:line %d, col %d" p.pos_fname p.pos_lnum (p.pos_cnum - p.pos_bol);;
 
 let parse name lexbuf =
-  try 
+  try
     lexbuf.lex_curr_p <- { lexbuf.lex_curr_p with pos_fname = name };
     Parser.program Lexer.token lexbuf
   with
@@ -28,11 +28,11 @@ let parse name lexbuf =
          failwith (sprintf "lexical error at %s"
                         (string_of_position lexbuf.lex_curr_p))
 
-let parse_string name s = 
+let parse_string name s =
   let lexbuf = Lexing.from_string s in
   parse name lexbuf
 
-let parse_file name input_file = 
+let parse_file name input_file =
   let lexbuf = Lexing.from_channel input_file in
   parse name lexbuf
 
@@ -57,7 +57,7 @@ let string_of_file file_name =
   let inchan = open_in file_name in
   let buf = String.create (in_channel_length inchan) in
   really_input inchan buf 0 (in_channel_length inchan);
-  buf 
+  buf
 
 let run_asm asm_string out =
   let outfile = open_out (out ^ ".s") in
@@ -86,7 +86,7 @@ let run_asm asm_string out =
     let (_, status) = waitpid [] ran_pid in
     match status with
       | WEXITED 0 -> Right(string_of_file rstdout_name)
-      | WEXITED n -> Left(sprintf "Error %d: %s" n (string_of_file rstdout_name))
+      | WEXITED n -> Left(sprintf "Error %d: %s" n (string_of_file rstderr_name))
       | WSIGNALED n ->
         Left(sprintf "Signalled with %d while running %s." n out)
       | WSTOPPED n ->
@@ -102,7 +102,7 @@ let run p out =
     | BindingError s -> Left("Binding error: " ^ s)
     | Failure s -> Left("Compile error: " ^ s)
     | err -> Left("Unexpected compile error: " ^ Printexc.to_string err)
-  in    
+  in
   match maybe_asm_string with
   | Left(s) -> Left(s)
   | Right(asm_string) ->
@@ -114,7 +114,7 @@ let run_anf p out =
     | BindingError s -> Left("Binding error: " ^ s)
     | Failure s -> Left("Compile error: " ^ s)
     | err -> Left("Unexpected compile error: " ^ Printexc.to_string err)
-  in    
+  in
   match maybe_asm_string with
   | Left(s) -> Left(s)
   | Right(asm_string) ->
@@ -143,6 +143,6 @@ let test_err program_str outfile errmsg test_ctxt =
     ~cmp: (fun check result ->
       match check, result with
         | Left(expect_msg), Left(actual_message) ->
-          String.exists actual_message expect_msg          
+          String.exists actual_message expect_msg
         | _ -> false
     )

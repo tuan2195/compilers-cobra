@@ -6,18 +6,17 @@ open OUnit2
 let t name program expected = name>::test_run program name expected;;
 let te name program expected = name>::test_err program name expected;;
 
-let forty = "let x = 40 in x"
-let fals = "let x = false in x"
-let tru = "let x = true in x"
-
 let suite =
 "suite">:::
  [
-  t "forty" forty "40";
-  t "fals" fals "false";
-  t "tru" tru "true";
- 
- 
+  t "forty" "let x = 40 in x" "40";
+  t "fals" "let x = false in x" "false";
+  t "tru" "let x = true in x" "true";
+  t "true1" "if true : 5 else: 10" "5";
+  t "false1" "if false : 5 else: 10" "10";
+
+
+
  ]
 ;;
 

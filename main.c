@@ -12,9 +12,9 @@ const int BOOL_FLAG  = 0x1;
 
 int print(int val)
 {
-    if (val & BOOL_FLAG == 0)
+    if ((val & BOOL_FLAG) == 0)
         printf("%d\n", val >> 1);
-    if (val == 0xFFFFFFFF)
+    else if (val == 0xFFFFFFFF)
         printf("true\n");
     else if (val == 0x7FFFFFFF)
         printf("false\n");
@@ -25,6 +25,13 @@ int print(int val)
 
 void error(int err)
 {
+    if (err == 0xA)
+        fprintf(stderr, "Error: Arithmetic operation expects a number");
+    else if (err == 0xB)
+        fprintf(stderr, "Error: Logic operation expects a boolean");
+    else if (err == 0xC)
+        fprintf(stderr, "Error: Integer overflow detected");
+    exit(-1);
 }
 
 int main(int argc, char** argv)

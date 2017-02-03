@@ -247,8 +247,14 @@ let rec replicate (x : 'a) (i : int) : 'a list =
   else x :: (replicate x (i - 1))
 
 let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : instruction list =
-    let checkBool r = [ ITest(r, HexConst(0x1)); IJz("error"); ] in
-    let checkNum r = [ ITest(r, HexConst(0x1)); IJnz("error"); ] in
+    let checkBool r = [
+        ITest(r, Sized(DWORD_PTR, HexConst(0x1)));
+        IJz("error_logic_not_bool");
+    ] in
+    let checkNum r = [
+        ITest(r, Sized(DWORD_PTR, HexConst(0x1)));
+        IJnz("error_arith_not_num");
+    ] in
     match e with
     | ELet([id, e, _], body, _) ->
         let prelude = compile_expr e (si + 1) env in
@@ -261,15 +267,18 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             checkNum arg @ [
             IMov(Reg(EAX), arg);
             IAdd(Reg(EAX), Const(1 lsl 1));
-            (* jump if overflow here *)
+            IJo("error_int_overflow");
         ]
         | Sub1 ->
             checkNum arg @ [
             IMov(Reg(EAX), arg);
             ISub(Reg(EAX), Const(1 lsl 1));
-            (* jump if overflow here *)
+            IJo("error_int_overflow");
         ]
         | Print -> [
+            IPush(Reg(EAX));
+            ICall("print");
+            IAdd(Reg(EAX), Const(word_size));
             (* Call print function here *)
         ]
         | IsBool -> checkBool arg
@@ -285,8 +294,8 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
     | EPrim2 (op, e1, e2, t) ->
         let labelTrue = sprintf "compare_true_%d" t in
         let labelDone = sprintf "compare_done_%d" t in
-        let constTrue = HexConst(0xFFFFFFFFF) in
-        let constFalse = HexConst(0x7FFFFFFFF) in
+        let constTrue = Sized(DWORD_PTR, HexConst(0xFFFFFFFF)) in
+        let constFalse = Siezd(DWORD_PTR, HexConst(0x7FFFFFFF)) in
         let arg1 = compile_imm e1 env in
         let arg2 = compile_imm e2 env in
         let prelude = match op with
@@ -298,18 +307,18 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         | Plus -> [
             IMov(Reg(EAX), arg1);
             IAdd(Reg(EAX), arg2);
-            (* jump if overflow here *)
+            IJo("error_int_overflow");
         ]
         | Minus -> [
             IMov(Reg(EAX), arg1);
             ISub(Reg(EAX), arg2);
-            (* jump if overflow here *)
+            IJo("error_int_overflow");
         ]
         | Times -> [
             IMov(Reg(EAX), arg1);
             IMul(Reg(EAX), arg2);
             ISar(Reg(EAX), Const(1));
-            (* jump if overflow here *)
+            IJo("error_int_overflow");
         ]
         | And -> [
             IMov(Reg(EAX), arg1);
@@ -374,8 +383,8 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         let labelFalse = sprintf "if_false_%d" t in
         let labelTrue = sprintf "if_true_%d" t in
         let labelDone = sprintf "if_done_%d" t in
-        let constTrue = HexConst(0xFFFFFFFFF) in
-        let constFalse = HexConst(0x7FFFFFFFF) in
+        let constTrue = Sized(DWORD_PTR, HexConst(0xFFFFFFFF)) in
+        let constFalse = Siezd(DWORD_PTR, HexConst(0x7FFFFFFF)) in
         let argCond = compile_imm cnd env in
         checkBool argCond @ [
             IMov(Reg(EAX), argCond);
@@ -416,15 +425,33 @@ let compile_anf_to_string (anfed : tag expr) : string =
     "section .text
 extern error
 extern print
-global our_code_starts_here" in
+global our_code_starts_here
+our_code_starts_here:" in
+    let stackSize = word_size * (count_vars anfed) in
     let stack_setup = [
-        (* FILL: insert instructions for setting up stack here *)
-
+        ILineComment("Create stack frame: Save EBP and ESP");
+        IPush(Reg(EBP));
+        IMov(Reg(EBP), Reg(ESP));
+        ILineComment("Stack setup: count num vars and allocate stack space");
+        IAdd(Reg(ESP), Const(stackSize));
+        ILineComment("Program starts here");
     ] in
     let postlude = [
-      IRet
-      (* FILL: insert instructions for cleaning up stack, and maybe
-       some labels for jumping to errors, here *) ] in
+        (* Cleanup stack here *)
+        ILineComment("Cleanup starts here");
+        ISub(Reg(ESP), Const(stackSize));
+        IPop(Reg(EBP));
+        IRet;
+        ILineComment("Error handling labels");
+        ILabel("error_arith_not_num");
+        IPush(HexConst(0xA));
+        ICall("error");
+        ILabel("error_logic_not_bool");
+        IPush(HexConst(0xB));
+        ILabel("error_int_overflow");
+        IPush(HexConst(0xC));
+        ICall("error");
+    ] in
     let body = (compile_expr anfed 1 []) in
     let as_assembly_string = (to_asm (stack_setup @ body @ postlude)) in
     sprintf "%s%s\n" prelude as_assembly_string
