@@ -34,7 +34,6 @@ let suite =
   t "m14" "let x = 5 in 5 * x" "25";
   t "m15" "let x = 5, y = 6 in x * y" "30";
   t "m16" "let x = 5, y = 6 in let z = let a = x * y in a in z" "30";
-  (*t "false2" "if 5 : 5 else: 10" "10";*)
  ]
 ;;
 

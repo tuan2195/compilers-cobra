@@ -290,9 +290,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             checkBool arg @ [
             IXor(Reg(EAX), HexConst(0x80000000));
         ]
-        | PrintStack -> [
-            (* Pop stack while esp!=ebp and print each? *)
-        ]
+        | PrintStack -> failwith "PrintStack not implemented"
         )
     | EPrim2 (op, e1, e2, t) ->
         let labelTrue = sprintf "compare_true_%d" t in
@@ -307,6 +305,7 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             | And | Or ->
                 checkBool arg2 @ checkBool arg1
         in prelude @ (match op with
+        (* A lot of optimization here so watch out for bugs *)
         | Plus -> [
             (*IMov(Reg(EAX), arg1);*)
             IAdd(Reg(EAX), arg2);
