@@ -152,7 +152,7 @@ let r_to_asm (r : reg) : string =
 let rec arg_to_asm (a : arg) : string =
   match a with
   | Const(n) -> sprintf "%d" n
-  | HexConst(n) -> sprintf "0x%x" n
+  | HexConst(n) -> sprintf "0x%lx" (Int32.of_int n)
   | Reg(r) -> r_to_asm r
   | RegOffset(n, r) ->
      if n >= 0 then
