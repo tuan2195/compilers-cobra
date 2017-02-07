@@ -247,6 +247,8 @@ let rec replicate (x : 'a) (i : int) : 'a list =
   else x :: (replicate x (i - 1))
 
 let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : instruction list =
+    let constTrue = Sized(DWORD_PTR, HexConst(0xFFFFFFFF)) in
+    let constFalse = Sized(DWORD_PTR, HexConst(0x7FFFFFFF)) in
     let checkBool arg = [
         IMov(Reg(EAX), arg);
         ITest(Reg(EAX), Sized(DWORD_PTR, HexConst(0x1)));
@@ -257,12 +259,21 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         ITest(Reg(EAX), Sized(DWORD_PTR, HexConst(0x1)));
         IJnz("error_arith_not_num");
     ] in
+    let blockTrueFalse labelTrue labelDone = [
+        IMov(Reg(EAX), constFalse);
+        IJmp(labelDone);
+        ILabel(labelTrue);
+        IMov(Reg(EAX), constTrue);
+        ILabel(labelDone);
+    ] in
     match e with
     | ELet([id, e, _], body, _) ->
         let prelude = compile_expr e (si + 1) env in
         let body = compile_expr body (si + 1) ((id, si)::env) in
         prelude @ [ IMov(RegOffset(~-si, EBP), Reg(EAX)) ] @ body
     | EPrim1 (op, e, t) ->
+        let labelTrue = sprintf "isboolnum_true_%d" t in
+        let labelDone = sprintf "isboolnum_done_%d" t in
         let arg = compile_imm e env in
         (match op with
         | Add1 ->
@@ -282,10 +293,17 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             IPush(Reg(EAX));
             ICall("print");
             IPop(Reg(EAX));
-            (* Call print function here *)
         ]
-        | IsBool -> checkBool arg
-        | IsNum -> checkNum arg
+        | IsBool -> [
+            IMov(Reg(EAX), arg);
+            ITest(Reg(EAX), Sized(DWORD_PTR, HexConst(0x1)));
+            IJnz(labelTrue);
+        ] @ blockTrueFalse labelTrue labelDone
+        | IsNum -> [
+            IMov(Reg(EAX), arg);
+            ITest(Reg(EAX), Sized(DWORD_PTR, HexConst(0x1)));
+            IJz(labelTrue);
+        ] @ blockTrueFalse labelTrue labelDone
         | Not ->
             checkBool arg @ [
             IXor(Reg(EAX), HexConst(0x80000000));
@@ -295,8 +313,6 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
     | EPrim2 (op, e1, e2, t) ->
         let labelTrue = sprintf "compare_true_%d" t in
         let labelDone = sprintf "compare_done_%d" t in
-        let constTrue = Sized(DWORD_PTR, HexConst(0xFFFFFFFF)) in
-        let constFalse = Sized(DWORD_PTR, HexConst(0x7FFFFFFF)) in
         let arg1 = compile_imm e1 env in
         let arg2 = compile_imm e2 env in
         let prelude = match op with
@@ -319,8 +335,8 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
         | Times -> [
             (*IMov(Reg(EAX), arg1);*)
             IMul(Reg(EAX), arg2);
-            ISar(Reg(EAX), Const(1));
             IJo("error_int_overflow");
+            ISar(Reg(EAX), Const(1));
         ]
         | And -> [
             (*IMov(Reg(EAX), arg1);*)
@@ -334,59 +350,32 @@ let rec compile_expr (e : tag expr) (si : int) (env : (string * int) list) : ins
             (*IMov(Reg(EAX), arg1);*)
             ICmp(Reg(EAX), arg2);
             IJg(labelTrue);
-            IMov(Reg(EAX), constFalse);
-            IJmp(labelDone);
-            ILabel(labelTrue);
-            IMov(Reg(EAX), constTrue);
-            ILabel(labelDone);
-        ]
+        ] @ blockTrueFalse labelTrue labelDone
         | GreaterEq -> [
             (*IMov(Reg(EAX), arg1);*)
             ICmp(Reg(EAX), arg2);
             IJge(labelTrue);
-            IMov(Reg(EAX), constFalse);
-            IJmp(labelDone);
-            ILabel(labelTrue);
-            IMov(Reg(EAX), constTrue);
-            ILabel(labelDone);
-        ]
+        ] @ blockTrueFalse labelTrue labelDone
         | Less -> [
             (*IMov(Reg(EAX), arg1);*)
             ICmp(Reg(EAX), arg2);
             IJl(labelTrue);
-            IMov(Reg(EAX), constFalse);
-            IJmp(labelDone);
-            ILabel(labelTrue);
-            IMov(Reg(EAX), constTrue);
-            ILabel(labelDone);
-        ]
+        ] @ blockTrueFalse labelTrue labelDone
         | LessEq -> [
             (*IMov(Reg(EAX), arg1);*)
             ICmp(Reg(EAX), arg2);
             IJle(labelTrue);
-            IMov(Reg(EAX), constFalse);
-            IJmp(labelDone);
-            ILabel(labelTrue);
-            IMov(Reg(EAX), constTrue);
-            ILabel(labelDone);
-        ]
+        ] @ blockTrueFalse labelTrue labelDone
         | Eq -> [
             (*IMov(Reg(EAX), arg1);*)
             ICmp(Reg(EAX), arg2);
             IJe(labelTrue);
-            IMov(Reg(EAX), constFalse);
-            IJmp(labelDone);
-            ILabel(labelTrue);
-            IMov(Reg(EAX), constTrue);
-            ILabel(labelDone);
-        ]
+        ] @ blockTrueFalse labelTrue labelDone
         )
     | EIf (cnd, thn, els, t) ->
         let labelFalse = sprintf "if_false_%d" t in
         let labelTrue = sprintf "if_true_%d" t in
         let labelDone = sprintf "if_done_%d" t in
-        let constTrue = Sized(DWORD_PTR, HexConst(0xFFFFFFFF)) in
-        let constFalse = Sized(DWORD_PTR, HexConst(0x7FFFFFFF)) in
         let argCond = compile_imm cnd env in
         checkBool argCond @ [
             (*IMov(Reg(EAX), argCond);*)
@@ -414,9 +403,9 @@ and compile_imm (e : tag expr) (env : (string * int) list) : arg =
         else
            Const(n lsl 1)
     | EBool(true, _) ->
-        HexConst(0xFFFFFFFF)
+        Sized(DWORD_PTR, HexConst(0xFFFFFFFF))
     | EBool(false, _) ->
-        HexConst(0x7FFFFFFF)
+        Sized(DWORD_PTR, HexConst(0x7FFFFFFF))
     | EId(x, _) ->
         RegOffset(~-(find env x), EBP)
     | _ -> failwith "Impossible: not an immediate"
