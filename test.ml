@@ -34,6 +34,24 @@ let suite =
   t "m14" "let x = 5 in 5 * x" "25";
   t "m15" "let x = 5, y = 6 in x * y" "30";
   t "m16" "let x = 5, y = 6 in let z = let a = x * y in a in z" "30";
+
+  t "m17" "if true: 5 else: 6" "5";
+  t "m18" "if false: 5 else: 6" "6";
+  t "m19" "let x = true in if x: 6 else: 5" "6";
+  t "m20" "let x = false in if x: 6 else: 5" "5";
+  t "m21" "let x = if true: 5 else: 6 in x" "5";
+  t "m22" "let x = if false: 5 else: 6 in x" "6";
+  t "m23" "if true: let x = 5 in x else: 6" "5";
+  t "m24" "if false: let x = 5 in x else: 6" "6";
+  t "m25" "if 6 > 5: 6 else: 5" "6";
+  t "m26" "if 6 < 5: 6 else: 5" "5";
+  t "m27" "if true || true: 6 else: 5" "6";
+  t "m28" "if false || true: 6 else: 5" "6";
+  t "m29" "if true || false: 6 else: 5" "6";
+  t "m30" "if false || false: 6 else: 5" "5";
+  t "m31" "if false && false: 6 else: 5" "5";
+  t "m32" "if true && true: 6 else: 5" "6";
+
  ]
 ;;
 
