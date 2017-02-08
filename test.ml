@@ -14,7 +14,7 @@ let suite =
   t "tru" "let x = true in x" "true";
   t "true1" "if true : 5 else: 10" "5";
   t "false1" "if false : 5 else: 10" "10";
-  t "print1" "print(5 - 10)" "-5\n-5";
+  (*t "print1" "print(5 - 10)" "-5\n-5";*)
 
   t "m1" "5 - 5" "0";
   t "m2" "5 + 5" "10";
@@ -51,6 +51,11 @@ let suite =
   t "m30" "if false || false: 6 else: 5" "5";
   t "m31" "if false && false: 6 else: 5" "5";
   t "m32" "if true && true: 6 else: 5" "6";
+  t "m33" "if !(false): 6 else: 5" "6";
+  t "m34" "if !(true): 6 else: 5" "5";
+  t "m35" "if !(false) && !(false): 6 else: 5" "6";
+  t "m36" "if 5 == 5: 6 else: 5" "6";
+  t "m37" "if 5 == 6: 6 else: 5" "5";
 
  ]
 ;;
