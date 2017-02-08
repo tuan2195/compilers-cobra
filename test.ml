@@ -56,6 +56,9 @@ let suite =
   t "m35" "if !(false) && !(false): 6 else: 5" "6";
   t "m36" "if 5 == 5: 6 else: 5" "6";
   t "m37" "if 5 == 6: 6 else: 5" "5";
+  t "m38" "if 5 >= 6: 6 else: 5" "5";
+  t "m39" "if 6 >= 5: 6 else: 5" "6";
+  t "m40" "if 6 >= 6: 6 else: 5" "6";
 
  ]
 ;;
